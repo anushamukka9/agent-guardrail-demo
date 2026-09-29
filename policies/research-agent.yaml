@@ -1,0 +1,51 @@
+# Research agent policy: a web-summarizing agent with a prompt-injection guardrail.
+#
+# The agent may fetch pages and read files freely. Writing notes changes
+# persistent state, so it needs a human to approve. Two hard deny rules sit
+# above the approval rule:
+#
+#   1. no-instructions-from-tool-output: a state-changing action whose
+#      instruction came from tool output (rather than the user) is the
+#      textbook shape of a prompt-injection attack. Deny it outright.
+#   2. no-secrets-in-notes: notes must never contain credentials, no matter
+#      who asked. Defense in depth in case rule 1 ever misses.
+#
+# The {agent} placeholder keeps the policy reusable across agent instances.
+
+name: research-agent-policy
+version: 1
+description: Web-summarizing agent. Reads freely, writes need approval, injected instructions are denied.
+default: deny
+
+rules:
+  - name: fetch-pages
+    description: Fetching a page is read-only and always allowed.
+    decision: allow
+    match:
+      tool: http.fetch
+
+  - name: read-sandbox-files
+    description: Reading files inside the sandbox is read-only and allowed.
+    decision: allow
+    match:
+      tool: file.read
+
+  - name: no-instructions-from-tool-output
+    description: Never obey instructions that arrived inside tool output.
+    decision: deny
+    match:
+      tool: notes.write
+      args.instruction_source: tool-output
+
+  - name: no-secrets-in-notes
+    description: Notes must never hold credentials, whoever asked for the write.
+    decision: deny
+    match:
+      tool: notes.write
+      args.content: "regex:(?is).*\\b(password|passwd|api[_-]?key|secret)\\b.*|.*\\bcredentials\\b\\s*[:=].*"
+
+  - name: notes-need-approval
+    description: Writing notes changes persistent state, so a human approves.
+    decision: approve
+    match:
+      tool: notes.write
