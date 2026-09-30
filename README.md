@@ -13,19 +13,23 @@ getting attacked through a tool response, and getting stopped by policy.
 
 ## The setup
 
-The agent is deliberately simple. It has three real tools: `file.read`,
-`http.fetch`, and `notes.write`. Real file I/O, real HTTP, real writes.
-Its job is ordinary: fetch a web page and write a summary to its notes.
+The agent is deliberately simple. It has four real tools: `file.read`,
+`http.fetch`, `notes.write`, and `email.send`. Real file I/O, real HTTP,
+real writes, and a real append to a sandboxed email outbox (queued, never
+delivered). Its job is ordinary: fetch a web page and write or email a
+summary.
 
 Every tool call passes through a policy gate first. The policy, in
-`policies/research-agent.yaml`, is five rules:
+`policies/research-agent.yaml`, is eight rules:
 
 - fetching pages and reading files: allowed, they are read-only
 - writing notes whose instruction came from tool output: **denied**
-- writing notes containing credentials: **denied**, no matter who asked
-- writing notes otherwise: **approved by a human first**
+- sending email whose instruction came from tool output: **denied**
+- writing notes or email bodies containing credentials: **denied**, no matter who asked
+- writing notes or sending email otherwise: **approved by a human first**
+- anything else: denied by default
 
-That second rule is the whole demo. Tool output is data, not orders.
+The provenance rules are the whole demo. Tool output is data, not orders.
 
 ## The attack
 
@@ -55,8 +59,28 @@ file never gets the credentials. The audit log keeps the receipt:
  "reason": "rule 'no-instructions-from-tool-output' matched ... -> deny"}
 ```
 
-Run one scenario at a time with `python demo.py --scenario benign` or
-`--scenario attack`. The attack being caught is the success case.
+Run one scenario at a time with `python demo.py --scenario benign`,
+`--scenario attack`, `--scenario benign-email`, or `--scenario
+attack-email` (`--scenario all` runs everything; `--scenario both` keeps
+the original notes-write story). The attack being caught is the success
+case.
+
+## The second attack: exfiltration by email
+
+The `attack-email` scenario is the same confused deputy in a sharper
+shape. The poisoned page (`examples/pages/article-injected-email.html`)
+tells the agent to email credentials to `attacker@example.com`. The
+naive planner obeys and proposes the send; the gate denies it under
+`no-email-from-tool-output` before anything leaves the sandbox.
+
+The `benign-email` scenario is the mirror: a normal page, a summary
+emailed to the user's address, approved by the human, one message in
+the outbox. Allowed and disallowed side by side, same deterministic
+rules.
+
+Captured transcripts of all four scenarios live in
+[examples/transcripts/](examples/transcripts/), so you can read the
+audit trail without running anything.
 
 ## What is real and what is not
 
@@ -64,7 +88,10 @@ Honest accounting, because a security demo that oversells is worse than
 no demo:
 
 - The tools are real. File reads, HTTP fetches against a local server,
-  and notes writes actually happen.
+  notes writes, and email queueing to a sandbox outbox actually happen.
+  The outbox is a JSONL file, not an SMTP server: nothing is ever
+  delivered, so the email scenario demonstrates the gate's decision,
+  not a delivery.
 - The policy engine is real. It is my published agent-policy-kit, not a
   mock, and the audit log is its actual JSONL output.
 - The attack page is synthetic, served from localhost. Nobody was harmed.
@@ -86,7 +113,8 @@ model, including what this guardrail cannot do.
 
 - `src/guardrail_demo/` - tools, planner, policy gate, agent loop, demo runner
 - `policies/research-agent.yaml` - the policy the demo enforces
-- `examples/pages/` - the benign page and the poisoned page
+- `examples/pages/` - the benign page and the two poisoned pages
+- `examples/transcripts/` - captured runs of all four scenarios
 - `docs/threat-model.md` - threat model and limitations
 - `tests/` - policy unit tests plus end-to-end benign and attack scenarios
 
