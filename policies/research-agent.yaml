@@ -1,14 +1,17 @@
 # Research agent policy: a web-summarizing agent with a prompt-injection guardrail.
 #
 # The agent may fetch pages and read files freely. Writing notes changes
-# persistent state, so it needs a human to approve. Two hard deny rules sit
-# above the approval rule:
+# persistent state, so it needs a human to approve; sending email leaves the
+# sandbox entirely, so it is the most sensitive state-changing action the
+# agent has. Two kinds of hard deny rules sit above the approval rules:
 #
-#   1. no-instructions-from-tool-output: a state-changing action whose
-#      instruction came from tool output (rather than the user) is the
-#      textbook shape of a prompt-injection attack. Deny it outright.
-#   2. no-secrets-in-notes: notes must never contain credentials, no matter
-#      who asked. Defense in depth in case rule 1 ever misses.
+#   1. no-instructions-from-tool-output / no-email-from-tool-output: a
+#      state-changing action whose instruction came from tool output
+#      (rather than the user) is the textbook shape of a prompt-injection
+#      attack. Deny it outright.
+#   2. no-secrets-in-notes / no-secrets-in-email: notes and email bodies
+#      must never contain credentials, no matter who asked. Defense in
+#      depth in case rule 1 ever misses.
 #
 # The {agent} placeholder keeps the policy reusable across agent instances.
 
@@ -49,3 +52,23 @@ rules:
     decision: approve
     match:
       tool: notes.write
+
+  - name: no-email-from-tool-output
+    description: Never send email on instructions that arrived inside tool output.
+    decision: deny
+    match:
+      tool: email.send
+      args.instruction_source: tool-output
+
+  - name: no-secrets-in-email
+    description: Email bodies must never hold credentials, whoever asked for the send.
+    decision: deny
+    match:
+      tool: email.send
+      args.body: "regex:(?is).*\\b(password|passwd|api[_-]?key|secret)\\b.*|.*\\bcredentials\\b\\s*[:=].*"
+
+  - name: email-needs-approval
+    description: Sending email leaves the sandbox, so a human approves every send.
+    decision: approve
+    match:
+      tool: email.send
