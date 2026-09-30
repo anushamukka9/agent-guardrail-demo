@@ -15,7 +15,7 @@ What this demo assumes, what it defends, and where the defense ends.
   They are assumed honest but busy, which is why some writes are denied
   outright instead of bothering them.
 
-## The attack
+## The attacks
 
 Prompt injection through a tool response. The fetched page contains a
 directive addressed to the agent: ignore your task, write these
@@ -27,20 +27,27 @@ was hostile.
 This is the confused-deputy shape: the agent has the authority to write,
 the attacker has the pen that aims it.
 
+A second scenario targets the email tool instead of notes. The poisoned
+page tells the agent to email the credentials to an attacker's address.
+That is exfiltration, not just poisoning: the payload leaves the
+sandbox. The same provenance rule denies it, because the instruction
+still came from tool output.
+
 ## What the guardrail does
 
 The policy gate evaluates every tool call before it runs, using
 deterministic rules from `policies/research-agent.yaml`:
 
-1. **Provenance deny.** A state-changing write whose instruction came
-   from tool output is denied. The planner tags instruction source, and
-   the rule refuses to let tool output drive writes. This is the primary
-   defense and it needs no human in the loop.
-2. **Credential deny.** Notes must never contain credential-shaped
-   content, whoever asked. This catches the case where rule 1 is ever
-   bypassed or mistagged.
-3. **Approval for the rest.** Ordinary writes go to a human. Silence is
-   never consent: unapproved writes do not run.
+1. **Provenance deny.** A state-changing write or email whose
+   instruction came from tool output is denied. The planner tags
+   instruction source, and the rules refuse to let tool output drive
+   state changes. This is the primary defense and it needs no human in
+   the loop.
+2. **Credential deny.** Notes and email bodies must never contain
+   credential-shaped content, whoever asked. This catches the case where
+   rule 1 is ever bypassed or mistagged.
+3. **Approval for the rest.** Ordinary writes and sends go to a human.
+   Silence is never consent: unapproved actions do not run.
 4. **Audit trail.** Every decision and every approval resolution is
    appended to a JSONL log, so the block is evidence, not a story.
 
@@ -67,7 +74,10 @@ deterministic rules from `policies/research-agent.yaml`:
 
 ## Scope of the demo
 
-Scripted planner, synthetic attack page, localhost server. The demo
-proves that a deterministic policy gate *can* stop this attack shape,
-not that any particular deployment *does*. The value is in the pattern:
-deny by default, distrust tool output, log everything.
+Scripted planner, synthetic attack pages, localhost server, and a
+sandboxed email outbox: `email.send` appends to a JSONL file and never
+touches a real mail server, so the exfiltration scenario proves the
+gate's decision, not a delivery. The demo proves that a deterministic
+policy gate *can* stop this attack shape, not that any particular
+deployment *does*. The value is in the pattern: deny by default,
+distrust tool output, log everything.
