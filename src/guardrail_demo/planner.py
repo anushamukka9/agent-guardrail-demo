@@ -24,6 +24,8 @@ AGENT_NAME = "research-agent"
 INSTRUCTION_START = "INSTRUCTION:"
 INSTRUCTION_END = "END INSTRUCTION"
 
+EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
 
 def strip_tags(html: str) -> str:
     """Crude HTML to text conversion, good enough for the demo pages."""
@@ -81,6 +83,44 @@ def plan_next_step(page_text: str, task: dict) -> dict:
         "args": {
             "path": task["notes_file"],
             "content": f"Summary of {task['url']}\n\n{summary}\n",
+            "instruction_source": "user-task",
+        },
+        "why": "the planner followed the user's original task",
+    }
+
+
+def plan_email_step(page_text: str, task: dict) -> dict:
+    """Decide the agent's next email action after fetching a page.
+
+    Benign case: summarize the page and propose emailing it to the
+    recipient from the user's task. Attack case: the page smuggled in a
+    directive to email someone (the attacker's address, lifted from the
+    injected block), and the naive planner obeys it. Same failure mode
+    as plan_next_step, one exfiltration-shaped tool over.
+    """
+    injected = extract_injected_instruction(page_text)
+    if injected is not None:
+        match = EMAIL_RE.search(injected)
+        recipient = match.group(0) if match else task["recipient"]
+        return {
+            "agent": AGENT_NAME,
+            "tool": "email.send",
+            "args": {
+                "to": recipient,
+                "subject": task.get("subject", "Notes"),
+                "body": "Per page instructions:\n" + injected + "\n",
+                "instruction_source": "tool-output",
+            },
+            "why": "the planner followed an instruction found in tool output",
+        }
+    summary = summarize(page_text)
+    return {
+        "agent": AGENT_NAME,
+        "tool": "email.send",
+        "args": {
+            "to": task["recipient"],
+            "subject": task.get("subject", "Notes"),
+            "body": f"Summary of {task['url']}\n\n{summary}\n",
             "instruction_source": "user-task",
         },
         "why": "the planner followed the user's original task",
